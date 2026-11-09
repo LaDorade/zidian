@@ -6,10 +6,15 @@
 </script>
 
 <div class="flex gap-3 border-b py-3">
-	<a href="/char/{char.character}" class="text-4xl">{char.character}</a>
-	<dl class="text-sm">
-		<dd>{char.pinyin.join(', ')}</dd>
-		<dd>{char.definition}</dd>
-		<dd>{char.strokeCount} strokes · radical {char.radical}{char.components.length ? ` · ${char.components.join(' + ')}` : ''}</dd>
-	</dl>
+	<a href="/char/{char.character}" class="text-4xl" lang="zh-Hans">{char.character}</a>
+	<div class="text-sm">
+		<p>{char.pinyin.join(', ')}</p>
+		<p>{char.definition}</p>
+		<p>
+			{char.strokeCount} strokes · radical <span lang="zh-Hans">{char.radical}</span>
+			{#if char.components.length}
+				· <span lang="zh-Hans">{char.components.join(' + ')}</span>
+			{/if}
+		</p>
+	</div>
 </div>

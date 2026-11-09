@@ -11,16 +11,16 @@
 </svelte:head>
 
 <div class="flex gap-6">
-	<div class="text-8xl">{data.char}</div>
+	<div class="text-8xl" lang="zh-Hans">{data.char}</div>
 	{#if info}
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4">
 			<dt>Pinyin</dt><dd>{info.pinyin.join(', ')}</dd>
 			<dt>Meaning</dt><dd>{info.definition}</dd>
 			<dt>Strokes</dt><dd>{info.strokeCount}</dd>
-			<dt>Radical</dt><dd><a href="/char/{info.radical}" class="underline">{info.radical}</a></dd>
+			<dt>Radical</dt><dd lang="zh-Hans"><a href="/char/{info.radical}" class="underline">{info.radical}</a></dd>
 			{#if info.components.length}
 				<dt>Components</dt>
-				<dd class="flex gap-2">
+				<dd class="flex gap-2" lang="zh-Hans">
 					{#each info.components as c}<a href="/char/{c}" class="underline">{c}</a>{/each}
 				</dd>
 			{/if}
@@ -28,8 +28,8 @@
 				<dt>Etymology</dt>
 				<dd>
 					{info.etymology.type}{info.etymology.hint ? `: ${info.etymology.hint}` : ''}
-					{#if info.etymology.semantic}· meaning from <a href="/char/{info.etymology.semantic}" class="underline">{info.etymology.semantic}</a>{/if}
-					{#if info.etymology.phonetic}· sound from <a href="/char/{info.etymology.phonetic}" class="underline">{info.etymology.phonetic}</a>{/if}
+					{#if info.etymology.semantic}· meaning from <a lang="zh-Hans" href="/char/{info.etymology.semantic}" class="underline">{info.etymology.semantic}</a>{/if}
+					{#if info.etymology.phonetic}· sound from <a lang="zh-Hans" href="/char/{info.etymology.phonetic}" class="underline">{info.etymology.phonetic}</a>{/if}
 				</dd>
 			{/if}
 		</dl>

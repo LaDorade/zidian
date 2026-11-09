@@ -1,3 +1,3 @@
-# allow crawling everything by default
 User-agent: *
-Disallow:
+# Search result pages are infinite, only character pages are worth indexing
+Disallow: /?

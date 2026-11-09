@@ -2,7 +2,9 @@
 // Everything is a plain linear scan over ~125k entries: fast enough (a few ms)
 // and much simpler than maintaining indexes or a database.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { HAN } from '#lib/chinese.ts';
 import {
 	hasTones,
 	looksLikePinyin,
@@ -16,14 +18,24 @@ import type { CharInfo, Entry, SearchMode } from '#lib/types.ts';
 type IndexedEntry = Entry & {
 	py: string; // normalised pinyin, e.g. "nǐhǎo"
 	pyBase: string; // without tones, e.g. "nihao"
+	plainDefinitions: string[]; // lowercase, without "(...)" notes: what english search looks at
+	lowerForms: string[]; // [simplified, traditional] in lowercase, for 卡拉ok -> 卡拉OK
 	secondary: boolean; // proper noun or "variant of" entry: shown after the others
 	frequency: number; // rank in the HSK word list (lower = more common)
 	commonness: number; // rough proxy for words outside the HSK list, see computeCommonness()
 };
 
-const CJK = /[\u3400-\u9fff\uf900-\ufaff\u{20000}-\u{2ffff}]/u;
-const DATA_DIR = 'data';
+// Data files, downloaded by `npm run data`. DATA_DIR can point elsewhere in production.
+const DATA_DIR = process.env.DATA_DIR ?? 'data';
 const NOT_RANKED = Number.MAX_SAFE_INTEGER;
+
+function readData(file: string): string {
+	const path = join(DATA_DIR, file);
+	if (!existsSync(path)) {
+		throw new Error(`Missing dictionary file ${path}. Run "npm run data" to download it.`);
+	}
+	return readFileSync(path, 'utf8');
+}
 
 // ---------------------------------------------------------------------------
 // CC-CEDICT
@@ -33,7 +45,7 @@ const LINE = /^(\S+) (\S+) \[([^\]]*)\] \/(.*)\/$/;
 
 function parseCedict(): IndexedEntry[] {
 	const entries: IndexedEntry[] = [];
-	for (const line of readFileSync(`${DATA_DIR}/cedict.txt`, 'utf8').split(/\r?\n/)) {
+	for (const line of readData('cedict.txt').split(/\r?\n/)) {
 		const match = line.match(LINE);
 		if (!match) continue; // comments and empty lines
 		const [, traditional, simplified, pinyin, defs] = match;
@@ -53,6 +65,8 @@ function parseCedict(): IndexedEntry[] {
 			pinyin: numbersToMarks(pinyin),
 			definitions,
 			classifiers,
+			plainDefinitions: definitions.map((d) => d.toLowerCase().replace(/\(.*?\)/g, '')),
+			lowerForms: [simplified.toLowerCase(), traditional.toLowerCase()],
 			py,
 			pyBase: removeTones(py),
 			secondary: /^[A-Z]/.test(pinyin) || definitions.every((d) => /variant of|^used in/.test(d)),
@@ -75,7 +89,7 @@ function parseClassifiers(text: string): string[] {
 // "variant of 個|个[ge4]" -> "variant of 个[gè]"
 function cleanDefinition(def: string): string {
 	return def
-		.replace(new RegExp(`${CJK.source}+\\|(${CJK.source}+)`, 'gu'), '$1')
+		.replace(new RegExp(`${HAN.source}+\\|(${HAN.source}+)`, 'gu'), '$1')
 		.replace(/\[([a-z:A-Z]+[1-5](?: [a-z:A-Z]+[1-5])*)\]/g, (_, py) => `[${numbersToMarks(py)}]`);
 }
 
@@ -99,7 +113,7 @@ function computeCommonness(entries: IndexedEntry[]) {
 function addHskData(entries: IndexedEntry[]) {
 	// Several entries can share a key (e.g. 后 from 後 and from 后)
 	const byKey = Map.groupBy(entries, (e) => `${e.simplified}|${e.py}`);
-	for (const word of JSON.parse(readFileSync(`${DATA_DIR}/hsk.json`, 'utf8'))) {
+	for (const word of JSON.parse(readData('hsk.json'))) {
 		const level = word.level.find((l: string) => l.startsWith('new-')); // "new-3" = HSK 3.0, level 3
 		for (const form of word.forms) {
 			const key = `${word.simplified}|${normalizePinyin(form.transcriptions.numeric)}`;
@@ -116,7 +130,7 @@ function addHskData(entries: IndexedEntry[]) {
 
 function parseCharacters(): Map<string, CharInfo> {
 	const chars = new Map<string, CharInfo>();
-	for (const line of readFileSync(`${DATA_DIR}/dictionary.txt`, 'utf8').split('\n')) {
+	for (const line of readData('dictionary.txt').split('\n')) {
 		if (!line) continue;
 		const d = JSON.parse(line);
 		chars.set(d.character, {
@@ -125,13 +139,13 @@ function parseCharacters(): Map<string, CharInfo> {
 			pinyin: d.pinyin ?? [],
 			radical: d.radical ?? '',
 			// "⿰女子" -> ["女", "子"] (drops layout symbols and unknown parts)
-			components: [...(d.decomposition ?? '')].filter((c) => CJK.test(c) && c !== d.character),
+			components: [...(d.decomposition ?? '')].filter((c) => HAN.test(c) && c !== d.character),
 			etymology: d.etymology ?? null,
 			strokeCount: 0,
 			strokes: []
 		});
 	}
-	for (const line of readFileSync(`${DATA_DIR}/graphics.txt`, 'utf8').split('\n')) {
+	for (const line of readData('graphics.txt').split('\n')) {
 		if (!line) continue;
 		const g = JSON.parse(line);
 		const info = chars.get(g.character);
@@ -161,12 +175,11 @@ const WORD = 1; // english: the query is a whole word of a definition
 const PREFIX = 2;
 const CONTAINS = 3;
 
-function englishScore(entry: Entry, query: string, wordRegex: RegExp): number {
+function englishScore(entry: IndexedEntry, query: string, wordRegex: RegExp): number {
 	let best = Infinity;
-	entry.definitions.forEach((def, i) => {
-		// "to eat; to consume" -> ["to eat", "to consume"], ignoring "(...)" notes
-		const senses = def.toLowerCase().replace(/\(.*?\)/g, '').split(';');
-		senses.forEach((sense, j) => {
+	entry.plainDefinitions.forEach((def, i) => {
+		// "to eat; to consume" -> ["to eat", "to consume"]
+		def.split(';').forEach((sense, j) => {
 			// "to eat", "a man", "the sun" also count as exact matches
 			const plain = sense.trim().replace(/^(to|a|an|the) /, '');
 			if (plain === query) {
@@ -178,29 +191,51 @@ function englishScore(entry: Entry, query: string, wordRegex: RegExp): number {
 	return best;
 }
 
-function hanziScore(entry: Entry, query: string): number {
-	if (entry.simplified === query || entry.traditional === query) return EXACT;
-	if (entry.simplified.startsWith(query) || entry.traditional.startsWith(query)) return PREFIX;
-	if (entry.simplified.includes(query) || entry.traditional.includes(query)) return CONTAINS;
+function hanziScore(entry: IndexedEntry, query: string): number {
+	const forms = entry.lowerForms;
+	if (forms.some((f) => f === query)) return EXACT;
+	if (forms.some((f) => f.startsWith(query))) return PREFIX;
+	if (forms.some((f) => f.includes(query))) return CONTAINS;
 	return Infinity;
 }
 
 function pinyinScore(entry: IndexedEntry, py: string, pyBase: string): number {
 	if (!entry.pyBase.startsWith(pyBase) || !pinyinStartsWith(entry.py, py)) return Infinity;
-	return entry.py.length === py.length ? EXACT : PREFIX;
+	return entry.pyBase === pyBase ? EXACT : PREFIX;
 }
 
 /**
  * Search by hanzi, pinyin (with or without tones) or english. Best matches first.
  * `mode` restricts latin queries to pinyin ('zh') or english ('en').
+ * Returns the total number of results and the `limit` results starting at `offset`.
  */
-export function search(input: string, mode: SearchMode = 'any'): Entry[] {
-	const query = input.trim().toLowerCase();
-	if (!query) return [];
+export function search(
+	input: string,
+	mode: SearchMode = 'any',
+	offset = 0,
+	limit = Infinity
+): { total: number; entries: Entry[] } {
+	const key = `${mode}|${input.trim()}`;
+	const results = cache.get(key) ?? searchUncached(input.trim(), mode);
+	// Least recently used cache: a Map keeps insertion order, so re-insert on each use
+	cache.delete(key);
+	cache.set(key, results);
+	if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
+	return { total: results.length, entries: results.slice(offset, offset + limit).map(toEntry) };
+}
+
+// Recent searches (sorted results), so that changing page does not redo the whole search.
+const CACHE_SIZE = 100;
+const cache = new Map<string, IndexedEntry[]>();
+
+function searchUncached(input: string, mode: SearchMode): IndexedEntry[] {
+	if (!input) return [];
 
 	let scoreOf: (e: IndexedEntry) => number;
 
-	if (CJK.test(query)) {
+	const query = input.toLowerCase();
+
+	if (HAN.test(query)) {
 		scoreOf = (e) => hanziScore(e, query);
 	} else {
 		// In 'any' mode, latin input can be pinyin or english: try both, unless tones are given.
@@ -208,7 +243,8 @@ export function search(input: string, mode: SearchMode = 'any'): Entry[] {
 		const pyBase = removeTones(py);
 		const english = mode === 'en' || (mode === 'any' && !hasTones(query));
 		const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const wordRegex = new RegExp(`\\b${escaped}\\b`, 'i');
+		// Not \b, which is ASCII-only: "ng" would be a word in "děng", "crêpe" would contain "cr"
+		const wordRegex = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u');
 
 		scoreOf = (e) =>
 			Math.min(
@@ -233,7 +269,7 @@ export function search(input: string, mode: SearchMode = 'any'): Entry[] {
 			b.entry.commonness - a.entry.commonness ||
 			a.entry.simplified.length - b.entry.simplified.length
 	);
-	return results.map((r) => toEntry(r.entry));
+	return results.map((r) => r.entry);
 }
 
 /** Strip the search-only fields before sending an entry to the browser. */
@@ -252,8 +288,4 @@ export function getCharacter(char: string): CharInfo | null {
 export function charactersOf(words: string[], max = 10): CharInfo[] {
 	const unique = [...new Set(words.flatMap((w) => [...w]))].filter((c) => characters.has(c));
 	return unique.slice(0, max).map((c) => characters.get(c)!);
-}
-
-export function isChinese(text: string): boolean {
-	return CJK.test(text);
 }

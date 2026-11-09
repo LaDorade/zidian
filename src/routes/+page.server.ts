@@ -1,4 +1,6 @@
-import { charactersOf, isChinese, search } from '#lib/server/dict.ts';
+import { error } from '@sveltejs/kit';
+import { isChinese } from '#lib/chinese.ts';
+import { charactersOf, search } from '#lib/server/dict.ts';
 import type { SearchMode } from '#lib/types.ts';
 import type { PageServerLoad } from './$types';
 
@@ -11,12 +13,13 @@ export const load: PageServerLoad = ({ url }) => {
 	const modeParam = url.searchParams.get('mode') as SearchMode;
 	const mode = MODES.includes(modeParam) ? modeParam : 'any';
 
-	const results = search(q, mode);
-	const entries = results.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+	const { total, entries } = search(q, mode, (page - 1) * PAGE_SIZE, PAGE_SIZE);
+	const pageCount = Math.ceil(total / PAGE_SIZE);
+	if (page > 1 && page > pageCount) error(404, 'Page not found');
 
 	// Sidebar: characters of the query itself, or of the first results.
 	const words = isChinese(q) ? [q] : entries.slice(0, 3).map((e) => e.simplified);
 	const characters = charactersOf(words).map(({ strokes, ...char }) => char);
 
-	return { q, mode, page, total: results.length, pageCount: Math.ceil(results.length / PAGE_SIZE), entries, characters };
+	return { q, mode, page, total, pageCount, entries, characters };
 };

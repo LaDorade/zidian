@@ -15,6 +15,8 @@
 	<header class="mb-6 flex items-center gap-4">
 		<a href="/" class="font-bold">Zidian</a>
 		<form action="/" class="flex flex-1 gap-2">
+			<!-- Like jisho: the search box is ready to type in -->
+			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				name="q"
 				value={page.url.searchParams.get('q') ?? ''}

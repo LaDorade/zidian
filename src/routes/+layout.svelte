@@ -39,6 +39,11 @@
 	</main>
 
 	<footer class="mt-10 border-t pt-4 text-sm">
+    	<p>
+    		The project:
+    		<a href="https://github.com/ladorade/zidian" class="underline">Github</a>
+            (GPL).
+        </p>
 		<p>
 			Dictionary data:
 			<a href="https://cc-cedict.org/wiki/" class="underline">CC-CEDICT</a>

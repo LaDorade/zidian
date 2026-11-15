@@ -26,7 +26,7 @@ type IndexedEntry = Entry & {
 };
 
 // Data files, downloaded by `npm run data`. DATA_DIR can point elsewhere in production.
-const DATA_DIR = process.env.DATA_DIR ?? 'data';
+export const DATA_DIR = process.env.DATA_DIR ?? 'data';
 const NOT_RANKED = Number.MAX_SAFE_INTEGER;
 
 function readData(file: string): string {
@@ -282,6 +282,11 @@ function toEntry({ id, simplified, traditional, pinyin, definitions, classifiers
 
 export function getCharacter(char: string): CharInfo | null {
 	return characters.get(char) ?? null;
+}
+
+/** Every character that has its own data, for the sitemap. */
+export function allCharacters(): string[] {
+	return [...characters.keys()];
 }
 
 /** Unique chinese characters of the given words, in order, with their info. */

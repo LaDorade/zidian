@@ -20,8 +20,11 @@ For production:
 
 ```sh
 npm run build
-node build     # PORT=3000 by default, DATA_DIR if the data isn't in ./data
+ORIGIN=https://your.domain node build     # PORT=3000 by default, DATA_DIR if the data isn't in ./data
 ```
+
+`ORIGIN` is required (the server refuses to start without it): canonical URLs, OpenGraph
+tags, `robots.txt` and `sitemap.xml` are built from it rather than from the `Host` header.
 
 The whole dictionary is loaded in memory at startup (~350 MB of RAM), so it needs a
 long-running Node server, not a serverless platform.

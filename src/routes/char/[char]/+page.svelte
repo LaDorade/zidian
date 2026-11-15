@@ -1,17 +1,48 @@
 <script lang="ts">
 	import EntryList from '#lib/components/EntryList.svelte';
+	import Seo from '#lib/components/Seo.svelte';
+	import { siteOrigin } from '#lib/origin.ts';
+	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 	let info = $derived(data.info);
+
+	let pinyin = $derived(info?.pinyin ?? [...new Set(data.readings.map((e) => e.pinyin))]);
+	let meaning = $derived(info?.definition || data.readings[0]?.definitions.join('; ') || '');
+	let description = $derived(
+		[
+			`${data.char} (${pinyin.join(', ')})${meaning ? `: ${meaning}` : ''}.`,
+			info && `${info.strokeCount} strokes, radical ${info.radical}, stroke order.`,
+			`${data.wordCount} words with ${data.char}.`
+		]
+			.filter(Boolean)
+			.join(' ')
+	);
+
+	// Structured data: the character as a term of the dictionary
+	let jsonLd = $derived(
+		JSON.stringify({
+			'@context': 'https://schema.org',
+			'@type': 'DefinedTerm',
+			name: data.char,
+			alternateName: pinyin,
+			description: meaning || undefined,
+			url: siteOrigin(page.url) + page.url.pathname,
+			inDefinedTermSet: { '@type': 'DefinedTermSet', name: 'Zidian', url: siteOrigin(page.url) + '/' }
+		}).replaceAll('<', '\\u003c')
+	);
 </script>
 
+<!-- Only the first meaning in the title, it gets cut around 60 characters -->
+<Seo image="/char/{data.char}/og.png" title="{data.char} ({pinyin.join(', ')}){meaning ? ` - ${meaning.split(/[;,]/)[0]}` : ''} - Chinese character - Zidian" {description} />
+
 <svelte:head>
-	<title>{data.char} - Zidian</title>
+	{@html `<script type="application/ld+json">${jsonLd}</script>`}
 </svelte:head>
 
 <div class="flex gap-6">
-	<div class="text-8xl" lang="zh-Hans">{data.char}</div>
+	<h1 class="text-8xl" lang="zh-Hans">{data.char}</h1>
 	{#if info}
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4">
 			<dt>Pinyin</dt><dd>{info.pinyin.join(', ')}</dd>

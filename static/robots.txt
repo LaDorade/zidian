@@ -1,3 +1,0 @@
-User-agent: *
-# Search result pages are infinite, only character pages are worth indexing
-Disallow: /?

@@ -29,5 +29,8 @@
 		"typescript": "^6.0.3",
 		"vite": "^8.3.0",
 		"vitest": "^5.1.0"
+	},
+	"dependencies": {
+		"@resvg/resvg-js": "^2.6.2"
 	}
 }
